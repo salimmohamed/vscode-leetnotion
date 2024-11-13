@@ -9,6 +9,7 @@ import { leetcodeClient } from "./leetCodeClient";
 import { leetCodeManager } from "./leetCodeManager";
 import { LeetcodeSubmission } from "./types";
 import { PageObjectResponse, QueryRichText } from '@leetnotion/notion-api';
+import { templateUpdateSession } from './modules/leetnotion/session';
 
 class LeetnotionManager {
     public async enableNotionIntegration(): Promise<void> {
@@ -182,7 +183,8 @@ class LeetnotionManager {
     public async clearAllData(): Promise<void> {
         try {
             await leetCodeManager.signOut();
-            globalState.clearAllNotionDetails()
+            globalState.clearAllNotionDetails();
+            templateUpdateSession.close();
             leetnotionClient.signOut();
         } catch (error) {
 

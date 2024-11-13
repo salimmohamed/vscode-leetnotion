@@ -179,6 +179,8 @@ class GlobalState {
         this._submissionsDatabaseId = undefined;
         this._questionNumberPageIdMapping = undefined;
         this._notionIntegrationStatus = undefined
+        this._userQuestionTags = undefined;
+        this._pendingSession = undefined;
         this._state.update(TopicTagsKey, undefined);
         this._state.update(DailyProblemKey, undefined);
         this._state.update(NotionAccessTokenKey, undefined);
@@ -186,6 +188,8 @@ class GlobalState {
         this._state.update(SubmissionsDatabaseIdKey, undefined);
         this._state.update(QuestionNumberPageIdMappingKey, undefined);
         this._state.update(NotionIntegrationStatusKey, undefined);
+        this._state.update(UserQuestionTagsKey, undefined);
+        this._state.update(PendingSessionKey, undefined);
     }
 
     public get(key: string) {

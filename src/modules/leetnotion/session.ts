@@ -63,9 +63,7 @@ export class TemplateUpdateSession {
     }
 
     async update(property: string, value: unknown) {
-        if (!this.currentSessionId) {
-            throw new Error(`Session not initialized`);
-        }
+        if (!this.currentSessionId) return;
         await globalState.update(`${this.currentSessionId}.${property}`, value);
     }
 
