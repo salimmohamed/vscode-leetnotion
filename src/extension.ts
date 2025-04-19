@@ -26,14 +26,15 @@ import { markdownEngine } from "./webview/markdownEngine";
 import TrackData from "./utils/trackingUtils";
 import { globalState } from "./globalState";
 import { leetcodeClient } from "./leetCodeClient";
-import { clearInterval } from "timers";
-import { repeatAction } from "./utils/toolUtils";
+import { clearIntervals, repeatAction } from "./utils/toolUtils";
 import { leetnotionManager } from "./leetnotionManager";
 import { leetnotionClient } from "./leetnotionClient";
 import { templateUpdater } from "./modules/leetnotion/template-updater";
-import { setLists, setQuestionsOfAllLists } from "./utils/dataUtils";
+import { setLists, setProblemRatingMap, setQuestionsOfAllLists } from "./utils/dataUtils";
+import { UserStatus } from "./shared";
 
-let interval: NodeJS.Timeout;
+let intervals: NodeJS.Timeout[] = [];
+export let leetcodeTreeView: vscode.TreeView<LeetCodeNode> | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     try {
@@ -45,6 +46,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             leetCodeStatusBarController.updateStatusBar(leetCodeManager.getStatus(), leetCodeManager.getUser());
             leetCodeTreeDataProvider.refresh();
             leetcodeClient.initialize();
+
+            const status = leetCodeManager.getStatus();
+            if (status === UserStatus.SignedIn && intervals.length === 0) {
+                startRecurringTasks();
+            } else if (status === UserStatus.SignedOut) {
+                intervals = clearIntervals(intervals);
+            }
         });
 
         leetCodeTreeDataProvider.initialize(context);
@@ -52,26 +60,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         leetcodeClient.initialize();
         leetnotionClient.initialize();
 
-        interval = repeatAction(async () => {
-            try {
-                await Promise.all([
-                    leetcodeClient.checkIn(),
-                    leetcodeClient.collectEasterEgg(),
-                    leetcodeClient.setDailyProblem(),
-                    leetnotionClient.setUserQuestionTags(),
-                    setLists(),
-                    setQuestionsOfAllLists()
-                ])
-                leetCodeTreeDataProvider.refresh();
-            } catch (error) {
-                leetCodeChannel.appendLine(`Failed to perform repeated actions: ${error}`);
-            }
-        })
+        const status = leetCodeManager.getStatus();
+        if (status === UserStatus.SignedIn) {
+            startRecurringTasks();
+        }
 
         leetcodeClient.setTitleSlugQuestionNumberMapping();
         if (globalState.getNotionIntegrationStatus() === "pending") {
             leetnotionManager.updateNotionInfo().then(() => globalState.setNotionIntegrationStatus("done"));
         }
+
+        leetcodeTreeView = vscode.window.createTreeView("leetnotionExplorer", { treeDataProvider: leetCodeTreeDataProvider, showCollapseAll: true });
 
         context.subscriptions.push(
             leetCodeStatusBarController,
@@ -84,25 +83,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             codeLensController,
             explorerNodeManager,
             vscode.window.registerFileDecorationProvider(leetCodeTreeItemDecorationProvider),
-            vscode.window.createTreeView("leetnotionExplorer", { treeDataProvider: leetCodeTreeDataProvider, showCollapseAll: true }),
+            leetcodeTreeView,
             vscode.commands.registerCommand("leetnotion.deleteCache", () => cache.deleteCache()),
             vscode.commands.registerCommand("leetnotion.toggleLeetCodeCn", () => plugin.switchEndpoint()),
             vscode.commands.registerCommand("leetnotion.signin", () => leetCodeManager.signIn()),
             vscode.commands.registerCommand("leetnotion.signout", () => leetCodeManager.signOut()),
-            vscode.commands.registerCommand("leetnotion.previewProblem", (node: LeetCodeNode) => {
-                TrackData.report({
-                    event_key: `vscode_open_problem`,
-                    type: "click",
-                    extra: JSON.stringify({
-                        problem_id: node.id,
-                        problem_name: node.name,
-                    }),
-                });
-                show.previewProblem(node);
-            }),
+            vscode.commands.registerCommand("leetnotion.previewProblem", (node: vscode.Uri) => show.previewProblem(node)),
             vscode.commands.registerCommand("leetnotion.showProblem", (node: LeetCodeNode) => show.showProblem(node)),
             vscode.commands.registerCommand("leetnotion.pickOne", () => show.pickOne()),
             vscode.commands.registerCommand("leetnotion.searchProblem", () => show.searchProblem()),
+            vscode.commands.registerCommand("leetnotion.searchCompany", () => show.searchCompany()),
+            vscode.commands.registerCommand("leetnotion.searchTag", () => show.searchTag()),
+            vscode.commands.registerCommand("leetnotion.searchSheets", () => show.searchSheets()),
+            vscode.commands.registerCommand("leetnotion.searchList", () => show.searchLists()),
             vscode.commands.registerCommand("leetnotion.showSolution", (input: LeetCodeNode | vscode.Uri) => show.showSolution(input)),
             vscode.commands.registerCommand("leetnotion.refreshExplorer", () => leetCodeTreeDataProvider.refresh()),
             vscode.commands.registerCommand("leetnotion.testSolution", (uri?: vscode.Uri) => {
@@ -135,7 +128,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             vscode.commands.registerCommand("leetnotion.updateTemplate", () => templateUpdater.updateTemplate()),
             vscode.commands.registerCommand("leetnotion.addSubmissions", () => leetnotionManager.uploadSubmissions()),
             {
-                dispose: () => clearInterval(interval)
+                dispose: () => {
+                    intervals = clearIntervals(intervals)
+                }
             }
         );
 
@@ -149,5 +144,38 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 export function deactivate(): void {
-    clearInterval(interval);
+    intervals = clearIntervals(intervals);
 }
+
+function startRecurringTasks() {
+    intervals.push(
+        repeatAction(async () => {
+            try {
+                await Promise.all([
+                    leetcodeClient.checkIn(),
+                    leetcodeClient.collectEasterEgg(),
+                    leetcodeClient.setDailyProblem(),
+                    leetnotionClient.setUserQuestionTags(),
+                ]);
+                leetCodeTreeDataProvider.refresh();
+            } catch (error) {
+                leetCodeChannel.appendLine(`Failed to perform 30-min interval tasks: ${error}`);
+            }
+        }, 1000 * 60 * 30)
+    );
+
+    intervals.push(
+        repeatAction(async () => {
+            try {
+                await Promise.all([
+                    setLists(),
+                    setQuestionsOfAllLists(),
+                    setProblemRatingMap(),
+                ]);
+            } catch (error) {
+                leetCodeChannel.appendLine(`Failed to perform 2-hour interval tasks: ${error}`);
+            }
+        }, 1000 * 60 * 60 * 2)
+    );
+}
+

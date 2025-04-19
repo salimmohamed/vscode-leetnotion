@@ -9,6 +9,7 @@ import { Category, defaultProblem, ProblemState } from "../shared";
 import { explorerNodeManager } from "./explorerNodeManager";
 import { LeetCodeNode } from "./LeetCodeNode";
 import { globalState } from "../globalState";
+import { extractArrayElements } from "@/utils/dataUtils";
 
 export class LeetCodeTreeDataProvider implements vscode.TreeDataProvider<LeetCodeNode> {
     private context: vscode.ExtensionContext;
@@ -78,30 +79,15 @@ export class LeetCodeTreeDataProvider implements vscode.TreeDataProvider<LeetCod
         }
     }
 
+    public getParent(element: LeetCodeNode): vscode.ProviderResult<LeetCodeNode> {
+        return explorerNodeManager.getParentNode(element.id);
+    }
+
     private getChildrenByElementId(id: string, isProblem = false) {
-        switch (id) {
-            case Category.All:
-                return explorerNodeManager.getAllNodes();
-            case Category.Favorite:
-                return explorerNodeManager.getFavoriteNodes();
-            case Category.Difficulty:
-                return explorerNodeManager.getAllDifficultyNodes();
-            case Category.Tag:
-                return explorerNodeManager.getAllTagNodes();
-            case Category.Company:
-                return explorerNodeManager.getAllCompanyNodes();
-            case Category.Daily:
-                return explorerNodeManager.getDailyNode();
-            case Category.Sheets:
-                return explorerNodeManager.getSheetNodes();
-            case Category.Lists:
-                return explorerNodeManager.getListNodes();
-            default:
-                if (isProblem) {
-                    return [];
-                }
-                return explorerNodeManager.getChildrenNodesById(id);
+        if(isProblem) {
+            return [];
         }
+        return explorerNodeManager.getChildrenNodesById(id);
     }
 
     private parseIconPathFromProblemState(element: LeetCodeNode): string {
@@ -133,49 +119,50 @@ export class LeetCodeTreeDataProvider implements vscode.TreeDataProvider<LeetCod
     }
 
     private getSubCategoryTooltip(element: LeetCodeNode): string {
-        // return '' unless it is a sub-category node
-        if(element.isProblem) {
-            if(element.rating) {
-                return `Acceptance: ${element.acceptanceRate}%\nRating: ${element.rating}\nIndex: ${element.problemIndex}`
-            } else {
-                return `Acceptance: ${element.acceptanceRate}%`
-            }
+        if (element.isProblem) {
+            const base = `Acceptance: ${element.acceptanceRate}%`;
+            return element.rating
+                ? `${base}\nRating: ${element.rating}\nIndex: ${element.problemIndex}`
+                : base;
         }
-        if (element.id === "ROOT") {
+
+        const skipIds = [ "ROOT", Category.Difficulty, Category.Daily ];
+        if (skipIds.includes(element.id)) {
             return "";
         }
 
-        let childrenNodes: LeetCodeNode[] = this.getChildrenByElementId(element.id);
+        const childrenNodes: LeetCodeNode[] = this.getChildrenByElementId(element.id);
 
-        if(element.id in Category) {
-            return `Count: ${childrenNodes.length}`
+        const categoryTooltips: Record<string, string> = {
+            [Category.Tag]: `No of tags: ${childrenNodes.length}`,
+            [Category.Company]: `No of companies: ${childrenNodes.length}`,
+            [Category.Sheets]: `No of sheets: ${childrenNodes.length}`,
+            [Category.Lists]: `No of lists: ${childrenNodes.length}`
+        };
+
+        if (element.id in categoryTooltips) {
+            return categoryTooltips[element.id];
         }
 
-        if(element.id.startsWith(Category.Sheets) && element.id.split(".").length === 2) {
-            let problemNodes: LeetCodeNode[] = [];
-            for(const childNode of childrenNodes) {
-                const problems = this.getChildrenByElementId(childNode.id);
-                problemNodes = [...problemNodes, ...problems];
-            }
-            childrenNodes = problemNodes;
-        }
+        const { acceptedNum, failedNum, totalNum } = this.getSolvedDetailsOfList(element.id);
+        return [`AC: ${acceptedNum}`, `Failed: ${failedNum}`, `Total: ${totalNum}`].join(os.EOL);
+    }
 
-        let acceptedNum: number = 0;
-        let failedNum: number = 0;
-        for (const node of childrenNodes) {
-            switch (node.state) {
-                case ProblemState.AC:
-                    acceptedNum++;
-                    break;
-                case ProblemState.NotAC:
-                    failedNum++;
-                    break;
-                default:
-                    break;
-            }
+    private getSolvedDetailsOfList(id: string) {
+        const data = explorerNodeManager.getExplorerDataById(id);
+        if(!data) {
+            return { acceptedNum: 0, failedNum: 0, totalNum: 0 };
         }
-
-        return [`AC: ${acceptedNum}`, `Failed: ${failedNum}`, `Total: ${childrenNodes.length}`].join(os.EOL);
+        const problemIds = Array.from(new Set(extractArrayElements(data)));
+        const problems = explorerNodeManager.getProblemNodesByIds(problemIds);
+        const acceptedNum = problems.filter(problem => problem.state === ProblemState.AC).length;
+        const failedNum = problems.filter(problem => problem.state === ProblemState.NotAC).length;
+        const totalNum = problems.length;
+        return {
+            acceptedNum,
+            failedNum,
+            totalNum,
+        }
     }
 }
 

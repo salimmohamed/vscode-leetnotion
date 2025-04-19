@@ -3,10 +3,11 @@
 
 import { commands, ViewColumn } from "vscode";
 import { getLeetCodeEndpoint } from "../commands/plugin";
-import { Endpoint, IProblem } from "../shared";
+import { Category, Endpoint, IProblem } from "../shared";
 import { ILeetCodeWebviewOption, LeetCodeWebview } from "./LeetCodeWebview";
 import { markdownEngine } from "./markdownEngine";
 import * as _ from "lodash"
+import { explorerNodeManager } from "@/explorer/explorerNodeManager";
 
 class LeetCodePreviewProvider extends LeetCodeWebview {
     protected readonly viewType: string = "leetnotion.preview";
@@ -69,7 +70,6 @@ class LeetCodePreviewProvider extends LeetCodeWebview {
         const { title, url, category, difficulty, likes, dislikes, body } = this.description;
         const head: string = markdownEngine.render(`# [${title}](${url})`);
         let info: string;
-        console.log(this.node);
         if(!this.node.rating) {
             info = markdownEngine.render(
                 [
@@ -90,13 +90,17 @@ class LeetCodePreviewProvider extends LeetCodeWebview {
         const tags: string = [
             `<details>`,
             `<summary><strong>Tags</strong></summary>`,
-            markdownEngine.render(this.description.tags.map((t: string) => `[\`${t}\`](${this.getTagLink(_.kebabCase(t))})`).join(" | ")),
+            this.description.tags.map((t: string) =>
+                `<a href="#" onclick="onTagClick('${t}')"><code>${t}</code></a>`
+            ).join(" | "),
             `</details>`,
         ].join("\n");
         const companies: string = [
             `<details>`,
             `<summary><strong>Companies</strong></summary>`,
-            markdownEngine.render(this.description.companies.map((c: string) => `\`${c}\``).join(" | ")),
+            this.description.companies.map((c: string) =>
+                `<a href="#" onclick="onCompanyClick('${c}')"><code>${c}</code></a>`
+            ).join(" | "),
             `</details>`,
         ].join("\n");
         const links: string = markdownEngine.render(`[Submissions](${this.getSubmissionsLink(url)}) | [Solution](${this.getSolutionsLink(url)})`);
@@ -105,7 +109,7 @@ class LeetCodePreviewProvider extends LeetCodeWebview {
             <html>
             <head>
                 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src https:; script-src vscode-resource: 'unsafe-inline'; style-src vscode-resource: 'unsafe-inline';"/>
-                ${markdownEngine.getStyles()}
+                ${markdownEngine.getStyles(this.getPanel().webview)}
                 ${!this.sideMode ? button.style : ""}
                 <style>
                     code { white-space: pre-wrap; }
@@ -123,6 +127,12 @@ class LeetCodePreviewProvider extends LeetCodeWebview {
                 <script>
                     const vscode = acquireVsCodeApi();
                     ${!this.sideMode ? button.script : ""}
+                    function onTagClick(tag) {
+                        vscode.postMessage({ command: 'TagClick', tag });
+                    }
+                    function onCompanyClick(company) {
+                        vscode.postMessage({ command: 'CompanyClick', company });
+                    }
                 </script>
             </body>
             </html>
@@ -138,6 +148,14 @@ class LeetCodePreviewProvider extends LeetCodeWebview {
         switch (message.command) {
             case "ShowProblem": {
                 await commands.executeCommand("leetnotion.showProblem", this.node);
+                break;
+            }
+            case "TagClick": {
+                explorerNodeManager.revealNode(`${Category.Tag}#${message.tag}`);
+                break;
+            }
+            case "CompanyClick": {
+                explorerNodeManager.revealNode(`${Category.Company}#${message.company}`);
                 break;
             }
         }
@@ -214,6 +232,8 @@ interface IDescription {
 
 interface IWebViewMessage {
     command: string;
+    tag?: string;
+    company?: string;
 }
 
 export const leetCodePreviewProvider: LeetCodePreviewProvider = new LeetCodePreviewProvider();

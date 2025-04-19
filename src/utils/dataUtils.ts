@@ -6,13 +6,12 @@ import * as path from 'path';
 import { leetcodeClient } from '../leetCodeClient';
 import { globalState } from '../globalState';
 import { leetCodeChannel } from '../leetCodeChannel';
-import { CompanyTags, Lists, Mapping, QuestionsOfList, Sheets, TopicTags } from '../types';
-import Bottleneck from 'bottleneck';
+import { QuestionCompanyTags, Lists, Mapping, QuestionsOfList, Sheets, TopicTags, CompanyTags, ProblemRatingMap, ListsWithQuestions } from '../types';
 import { sleep } from './toolUtils';
-import { leetCodeTreeDataProvider } from '@/explorer/LeetCodeTreeDataProvider';
 
 const sheetsPath = '../../data/sheets.json';
 const companyTagsPath = '../../data/companyTags.json';
+const questionCompanyTagsPath = '../../data/questionCompanyTags.json';
 
 export function getSheets(): Sheets {
     const sheets = fsExtra.readJSONSync(path.join(__dirname, sheetsPath)) as Sheets;
@@ -24,7 +23,27 @@ export function getCompanyTags(): CompanyTags {
     return companyTags;
 }
 
-export async function getTopicTags(): Promise<TopicTags> {
+export function getQuestionCompanyTags(): QuestionCompanyTags {
+    return fsExtra.readJSONSync(path.join(__dirname, questionCompanyTagsPath)) as QuestionCompanyTags;
+}
+
+export async function getTopicTags(): Promise<Record<string, string[]>> {
+    const topicTags = {};
+    const questionTopicTags = await getQuestionTopicTags();
+    for(const problem of Object.keys(questionTopicTags)) {
+        const tags = questionTopicTags[problem];
+        for(const tag of tags) {
+            if(topicTags[tag]) {
+                topicTags[tag].push(problem);
+            } else {
+                topicTags[tag] = [problem];
+            }
+        }
+    }
+    return topicTags;
+}
+
+export async function getQuestionTopicTags(): Promise<TopicTags> {
     let topicTags = globalState.getTopicTags();
 
     if (!topicTags) {
@@ -35,16 +54,28 @@ export async function getTopicTags(): Promise<TopicTags> {
     return topicTags;
 }
 
+export async function getProblemRatingMap(): Promise<ProblemRatingMap> {
+    let problemRatingMap = globalState.getProblemRatingMap();
+
+    if (!problemRatingMap) {
+        problemRatingMap = await leetcodeClient.getProblemRatingsMap();
+        globalState.setProblemRatingMap(problemRatingMap);
+    }
+
+    return problemRatingMap;
+}
+
+export async function setProblemRatingMap() {
+    const problemRatingMap = await leetcodeClient.getProblemRatingsMap();
+    globalState.setProblemRatingMap(problemRatingMap);
+}
+
 export function getCompanyPopularity(): Record<string, number> {
     const companyTags = getCompanyTags();
     const companyPoularityMapping: Record<string, number> = {};
-    for (const problemId of Object.keys(companyTags)) {
-        for (const company of companyTags[problemId]) {
-            if (companyPoularityMapping[company] === undefined) {
-                companyPoularityMapping[company] = 0;
-            }
-            companyPoularityMapping[company] += 1;
-        }
+    for(const [company, data] of Object.entries(companyTags)) {
+        const problems = extractArrayElements(data);
+        companyPoularityMapping[company] = problems.length;
     }
     return companyPoularityMapping;
 }
@@ -65,17 +96,6 @@ export function getTitleSlugPageIdMapping() {
     return mapping;
 }
 
-const limiter = new Bottleneck({
-    maxConcurrent: 1,
-    minTime: 1000,
-});
-
-const rateLimitedGetQuestionsOfList = limiter.wrap(
-    async (slug: string): Promise<QuestionsOfList> => {
-        return leetcodeClient.getQuestionsOfList(slug);
-    }
-);
-
 export async function getLists(): Promise<Lists> {
     let lists = globalState.getLists();
     if (!lists) {
@@ -83,6 +103,18 @@ export async function getLists(): Promise<Lists> {
         globalState.setLists(lists);
     }
     return lists;
+}
+
+export async function getListsWithQuestions(): Promise<ListsWithQuestions> {
+    const lists = await getLists();
+    const listsDetails: ListsWithQuestions = {};
+    if (lists) {
+        for (const list of lists) {
+            const questions = await globalState.getQuestionsOfList(list.slug);
+            listsDetails[list.name] = questions.map(item => item.questionFrontendId);
+        }
+    }
+    return listsDetails;
 }
 
 export async function setLists() {
@@ -102,4 +134,21 @@ export async function setQuestionsOfAllLists() {
             leetCodeChannel.appendLine(`Failed to update questions of list: ${error}`);
         }
     }
+}
+
+export function extractArrayElements(data) {
+    let result = [];
+
+    function recurse(value) {
+        if (Array.isArray(value)) {
+            result.push(...value);
+            value.forEach(item => recurse(item));
+        } else if (typeof value === 'object' && value !== null) {
+            Object.values(value).forEach(val => recurse(val));
+        }
+    }
+
+    recurse(data);
+    result = [...new Set(result)];
+    return result;
 }

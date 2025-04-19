@@ -26,6 +26,7 @@ import type {
     MutationUrl,
     PrimaryColor,
 } from '@leetnotion/notion-api';
+import { ALL_TIME, LAST_30_DAYS, LAST_3_MONTHS, LAST_6_MONTHS, MORE_THAN_6_MONTHS, ProblemRating } from './shared';
 
 export interface LeetcodeSubmission {
     code: string;
@@ -154,7 +155,24 @@ export type Lists = Array<List>;
 export type QuestionsOfList = Array<QuestionOfList>;
 
 export type Sheets = Record<string, Record<string, string[]>>;
-export type CompanyTags = Record<string, string[]>;
+export type ListsWithQuestions = Record<string, string[]>;
+
+export type CompanyProblem = string;
+
+export type CompanyDetails = {
+    [LAST_30_DAYS]?: CompanyProblem[];
+    [LAST_3_MONTHS]?: CompanyProblem[];
+    [LAST_6_MONTHS]?: CompanyProblem[];
+    [MORE_THAN_6_MONTHS]?: CompanyProblem[];
+    [ALL_TIME]?: CompanyProblem[];
+} | CompanyProblem[]
+
+export type CompanyTags = {
+    [key: string]: CompanyDetails;
+};
+
+export type QuestionCompanyTags = Record<string, string[]>;
+
 export type SubmissionPageDetails = {
     submissionId: number,
     submissionPageId: string,
@@ -220,3 +238,20 @@ export type LeetnotionSubmission = {
     status_display: string,
     id: number,
 }
+
+export type LeetnotionTree = {
+    All?: string[];
+    Difficulty?: {
+        Easy: string[];
+        Medium: string[];
+        Hard: string[];
+    };
+    Tag?: Record<string, string[]>;
+    Company?: CompanyTags
+    Favorite?: string[];
+    Daily?: string[];
+    Sheets?: Sheets;
+    Lists?: Record<string, string[]>;
+}
+
+export type ProblemRatingMap = Record<string, ProblemRating>;
