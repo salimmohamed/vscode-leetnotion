@@ -2,7 +2,7 @@
     "name": "vscode-leetnotion",
     "displayName": "Leetnotion",
     "description": "Solve LeetCode problems in VsCode and keep your submissions in sync with your Ultimate LeetCode Tracker template in notion",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "author": "Leetnotion",
     "publisher": "Leetnotion",
     "license": "MIT",
@@ -116,6 +116,12 @@
             {
                 "command": "leetnotion.searchSheets",
                 "title": "Search Sheets",
+                "category": "Leetnotion",
+                "icon": "$(search)"
+            },
+            {
+                "command": "leetnotion.searchContests",
+                "title": "Search Contests",
                 "category": "Leetnotion",
                 "icon": "$(search)"
             },
@@ -273,6 +279,11 @@
                 {
                     "command": "leetnotion.searchSheets",
                     "when": "view == leetnotionExplorer && viewItem == sheets",
+                    "group": "inline"
+                },
+                {
+                    "command": "leetnotion.searchContests",
+                    "when": "view == leetnotionExplorer && viewItem == contests",
                     "group": "inline"
                 }
             ],
